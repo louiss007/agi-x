@@ -19,10 +19,10 @@ from src.transformer.train_util import build_model, run_epoch, warm_up, Batch, T
 def load_tokenizers():
 
     try:
-        spacy_de = spacy.load("de_core_news_sm")
+        spacy_zh = spacy.load("zh_core_web_sm")
     except IOError:
-        os.system("python -m spacy download de_core_news_sm")
-        spacy_de = spacy.load("de_core_news_sm")
+        os.system("python -m spacy download zh_core_web_sm")
+        spacy_zh = spacy.load("zh_core_web_sm")
 
     try:
         spacy_en = spacy.load("en_core_web_sm")
@@ -30,7 +30,7 @@ def load_tokenizers():
         os.system("python -m spacy download en_core_web_sm")
         spacy_en = spacy.load("en_core_web_sm")
 
-    return spacy_de, spacy_en
+    return spacy_zh, spacy_en
 
 
 def tokenize(text, tokenizer):
@@ -48,14 +48,14 @@ def yield_tokens(file_path, tokenizer):
             yield tokenizer(line.strip())
 
 
-def build_vocabulary(spacy_de, spacy_en):
-    def tokenize_de(text):
-        return tokenize(text, spacy_de)
+def build_vocabulary(spacy_zh, spacy_en):
+    def tokenize_zh(text):
+        return tokenize(text, spacy_zh)
 
     def tokenize_en(text):
         return tokenize(text, spacy_en)
 
-    print("Building German Vocabulary ...")
+    print("Building Chinese Vocabulary ...")
     # train, val, test = datasets.Multi30k(language_pair=("de", "en"))
     # vocab_src = build_vocab_from_iterator(
     #     yield_tokens(train + val + test, tokenize_de, index=0),
@@ -63,7 +63,7 @@ def build_vocabulary(spacy_de, spacy_en):
     #     specials=["<s>", "</s>", "<blank>", "<unk>"],
     # )
     vocab_src = build_vocab_from_iterator(
-        yield_tokens('data/wmt16/data.de', tokenize_de),
+        yield_tokens('data/modelwhale/data.zh', tokenize_zh),
         min_freq=2,
         specials=["<s>", "</s>", "<blank>", "<unk>"],
     )
@@ -76,7 +76,7 @@ def build_vocabulary(spacy_de, spacy_en):
     #     specials=["<s>", "</s>", "<blank>", "<unk>"],
     # )
     vocab_tgt = build_vocab_from_iterator(
-        yield_tokens('data/wmt16/data.en', tokenize_en),
+        yield_tokens('data/modelwhale/data.en', tokenize_en),
         min_freq=2,
         specials=["<s>", "</s>", "<blank>", "<unk>"],
     )
@@ -87,20 +87,20 @@ def build_vocabulary(spacy_de, spacy_en):
     return vocab_src, vocab_tgt
 
 
-def load_vocab(spacy_de, spacy_en):
-    if not os.path.exists("config/vocab.pt"):
-        vocab_src, vocab_tgt = build_vocabulary(spacy_de, spacy_en)
-        torch.save((vocab_src, vocab_tgt), "config/vocab.pt")
+def load_vocab(spacy_zh, spacy_en):
+    if not os.path.exists("config/vocab_zh.pt"):
+        vocab_src, vocab_tgt = build_vocabulary(spacy_zh, spacy_en)
+        torch.save((vocab_src, vocab_tgt), "config/vocab_zh.pt")
     else:
-        vocab_src, vocab_tgt = torch.load("config/vocab.pt")
+        vocab_src, vocab_tgt = torch.load("config/vocab_zh.pt")
     print("Finished.\nVocabulary sizes:")
     print(len(vocab_src))
     print(len(vocab_tgt))
     return vocab_src, vocab_tgt
 
 
-def get_data_iter(train_file_de, train_file_en):
-    fi_de = open(train_file_de, 'r')
+def get_data_iter(train_file_zh, train_file_en):
+    fi_de = open(train_file_zh, 'r')
     fi_en = open(train_file_en, 'r')
     for item in zip(fi_de.readlines(), fi_en.readlines()):
         yield item[0], item[1]
@@ -172,14 +172,14 @@ def create_dataloaders(
     device,
     vocab_src,
     vocab_tgt,
-    spacy_de,
+    spacy_zh,
     spacy_en,
     batch_size=12000,
     max_padding=128,
     is_distributed=True,
 ):
-    def tokenize_de(text):
-        return tokenize(text, spacy_de)
+    def tokenize_zh(text):
+        return tokenize(text, spacy_zh)
 
     def tokenize_en(text):
         return tokenize(text, spacy_en)
@@ -187,7 +187,7 @@ def create_dataloaders(
     def collate_fn(batch):
         return collate_batch(
             batch,
-            tokenize_de,
+            tokenize_zh,
             tokenize_en,
             vocab_src,
             vocab_tgt,
@@ -199,15 +199,15 @@ def create_dataloaders(
     # train_iter, valid_iter, test_iter = datasets.Multi30k(
     #     language_pair=("de", "en")
     # )
-    train_file_de = 'data/wmt16/train.de'
-    train_file_en = 'data/wmt16/train.en'
-    train_iter = get_data_iter(train_file_de, train_file_en)
-    valid_file_de = 'data/wmt16/val.de'
-    valid_file_en = 'data/wmt16/val.en'
-    valid_iter = get_data_iter(valid_file_de, valid_file_en)
-    # test_file_de = 'data/wmt16/test.de'
+    train_file_zh = 'data/modelwhale/train/news-commentary-v13.zh-en.zh'
+    train_file_en = 'data/modelwhale/train/news-commentary-v13.zh-en.en'
+    train_iter = get_data_iter(train_file_zh, train_file_en)
+    valid_file_zh = 'data/modelwhale/dev/newsdev2017.tc.zh'
+    valid_file_en = 'data/modelwhale/dev/newsdev2017.tc.en'
+    valid_iter = get_data_iter(valid_file_zh, valid_file_en)
+    # test_file_zh = 'data/wmt16/test.de'
     # test_file_en = 'data/wmt16/test.en'
-    # test_iter = get_data_iter(test_file_de, test_file_en)
+    # test_iter = get_data_iter(test_file_zh, test_file_en)
 
     train_iter_map = to_map_style_dataset(
         train_iter
@@ -242,7 +242,7 @@ def train_worker(
     ngpus_per_node,
     vocab_src,
     vocab_tgt,
-    spacy_de,
+    spacy_zh,
     spacy_en,
     config,
     is_distributed=False,
@@ -273,7 +273,7 @@ def train_worker(
         gpu,
         vocab_src,
         vocab_tgt,
-        spacy_de,
+        spacy_zh,
         spacy_en,
         batch_size=config["batch_size"] // ngpus_per_node,
         max_padding=config["max_padding"],
@@ -359,12 +359,12 @@ def train_model(vocab_src, vocab_tgt, spacy_de, spacy_en, config):
 
 def load_trained_model(config):
 
-    model_path = "multi30k_model_final.pt"
+    model_path = "{}final.pt".format(config.get('file_prefix'))
     if not os.path.exists(model_path):
-        train_model(vocab_src, vocab_tgt, spacy_de, spacy_en, config)
+        train_model(vocab_src, vocab_tgt, spacy_zh, spacy_en, config)
 
     model = build_model(len(vocab_src), len(vocab_tgt), N=6)
-    model.load_state_dict(torch.load("multi30k_model_final.pt"))
+    model.load_state_dict(torch.load(model_path))
     return model
 
 
@@ -411,7 +411,7 @@ def check_outputs(
     return results
 
 
-def run_model_example(vocab_src, vocab_tgt, spacy_de, spacy_en, n_examples=5):
+def run_model_example(vocab_src, vocab_tgt, spacy_zh, spacy_en, n_examples=5):
     # global vocab_src, vocab_tgt, spacy_de, spacy_en
 
     print("Preparing Data ...")
@@ -419,7 +419,7 @@ def run_model_example(vocab_src, vocab_tgt, spacy_de, spacy_en, n_examples=5):
         torch.device("cpu"),
         vocab_src,
         vocab_tgt,
-        spacy_de,
+        spacy_zh,
         spacy_en,
         batch_size=1,
         is_distributed=False,
@@ -429,7 +429,7 @@ def run_model_example(vocab_src, vocab_tgt, spacy_de, spacy_en, n_examples=5):
 
     model = build_model(len(vocab_src), len(vocab_tgt), N=6)
     model.load_state_dict(
-        torch.load("multi30k_model_final.pt", map_location=torch.device("cpu"))
+        torch.load("multi30k_model_zh_final.pt", map_location=torch.device("cpu"))
     )
 
     print("Checking Model Outputs:")
@@ -440,10 +440,10 @@ def run_model_example(vocab_src, vocab_tgt, spacy_de, spacy_en, n_examples=5):
 
 
 if __name__ == '__main__':
-    spacy_de, spacy_en = load_tokenizers()
-    vocab_src, vocab_tgt = load_vocab(spacy_de, spacy_en)
+    spacy_zh, spacy_en = load_tokenizers()
+    vocab_src, vocab_tgt = load_vocab(spacy_zh, spacy_en)
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    train_dataloader, valid_dataloader = create_dataloaders(device, vocab_src, vocab_tgt, spacy_de, spacy_en, is_distributed=False)
+    train_dataloader, valid_dataloader = create_dataloaders(device, vocab_src, vocab_tgt, spacy_zh, spacy_en, is_distributed=False)
     config = {
         "batch_size": 32,
         "distributed": False,
@@ -452,7 +452,7 @@ if __name__ == '__main__':
         "base_lr": 1.0,
         "max_padding": 72,
         "warmup": 3000,
-        "file_prefix": "multi30k_model_",
+        "file_prefix": "multi30k_model_zh_",
     }
-    # train_model(vocab_src, vocab_tgt, spacy_de, spacy_en, config)
-    run_model_example(vocab_src, vocab_tgt, spacy_de, spacy_en)
+    # train_model(vocab_src, vocab_tgt, spacy_zh, spacy_en, config)
+    run_model_example(vocab_src, vocab_tgt, spacy_zh, spacy_en)
